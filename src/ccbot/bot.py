@@ -1055,14 +1055,16 @@ async def _create_and_bind_window(
             created_wid, timeout=hook_timeout
         )
 
-        # --resume creates a new session_id in the hook, but messages continue
-        # writing to the resumed session's JSONL file. Override window_state to
-        # track the original session_id so the monitor can route messages back.
+        # --resume: messages keep writing to the resumed session's JSONL, and
+        # current Claude Code reports the original session_id in the
+        # SessionStart hook (source="resume"), so normally nothing to fix up.
+        # If the hook timed out or reported a different id (older CC versions),
+        # force both window_state AND session_map to the resumed id —
+        # session_map drives the monitor's watch list, and load_session_map()
+        # would revert a window_state-only override on the next poll cycle.
         if resume_session_id:
             ws = session_manager.get_window_state(created_wid)
             if not hook_ok:
-                # Hook timed out — manually populate window_state so the
-                # monitor can still route messages back to this topic.
                 logger.warning(
                     "Hook timed out for resume window %s, "
                     "manually setting session_id=%s cwd=%s",
@@ -1083,6 +1085,12 @@ async def _create_and_bind_window(
                 )
                 ws.session_id = resume_session_id
                 session_manager._save_state()
+            await session_manager.override_session_map_entry(
+                created_wid,
+                resume_session_id,
+                cwd=str(selected_path),
+                window_name=created_wname,
+            )
 
         if pending_thread_id is not None:
             # Thread bind flow: bind thread to newly created window
@@ -1117,6 +1125,9 @@ async def _create_and_bind_window(
                 )
                 if not send_ok:
                     logger.warning("Failed to forward pending text: %s", send_msg)
+                    resolved_chat = session_manager.resolve_chat_id(
+                        user.id, pending_thread_id
+                    )
                     await safe_send(
                         context.bot,
                         resolved_chat,
@@ -1495,6 +1506,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             )
             if not send_ok:
                 logger.warning("Failed to forward pending text: %s", send_msg)
+                resolved_chat = session_manager.resolve_chat_id(user.id, thread_id)
                 await safe_send(
                     context.bot,
                     resolved_chat,
@@ -1773,7 +1785,10 @@ async def handle_new_message(msg: NewMessage, bot: Bot) -> None:
             await clear_interactive_msg(user_id, bot, thread_id)
 
         # Skip tool call notifications when CCBOT_SHOW_TOOL_CALLS=false
-        if not config.show_tool_calls and msg.content_type in ("tool_use", "tool_result"):
+        if not config.show_tool_calls and msg.content_type in (
+            "tool_use",
+            "tool_result",
+        ):
             continue
 
         parts = build_response_parts(
