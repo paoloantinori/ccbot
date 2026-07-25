@@ -29,8 +29,10 @@ class Config:
         self.config_dir = ccbot_dir()
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load .env: local (cwd) takes priority over config_dir
-        # load_dotenv default override=False means first-loaded wins
+        # Load .env: config_dir (~/.ccbot/.env) is authoritative. It overrides
+        # both the inherited environment and a CWD .env, so a leaked parent
+        # TELEGRAM_BOT_TOKEN (e.g. a fleet repo's .env) can't hijack the
+        # bot (see #1).
         local_env = Path(".env")
         global_env = self.config_dir / ".env"
         if local_env.is_file():
