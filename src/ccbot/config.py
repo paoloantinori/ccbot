@@ -37,7 +37,11 @@ class Config:
             load_dotenv(local_env)
             logger.debug("Loaded env from %s", local_env.resolve())
         if global_env.is_file():
-            load_dotenv(global_env)
+            # override=True: ccbot's own .env must win over a leaked parent
+            # TELEGRAM_BOT_TOKEN (e.g. a fleet repo's .env sourced into the
+            # launching shell). Without this, the inherited token silently
+            # overrides ~/.ccbot/.env and ccbot runs as the wrong bot.
+            load_dotenv(global_env, override=True)
             logger.debug("Loaded env from %s", global_env)
 
         self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN") or ""
