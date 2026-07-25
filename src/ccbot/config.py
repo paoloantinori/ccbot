@@ -29,15 +29,21 @@ class Config:
         self.config_dir = ccbot_dir()
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load .env: local (cwd) takes priority over config_dir
-        # load_dotenv default override=False means first-loaded wins
+        # Load .env: config_dir (~/.ccbot/.env) is authoritative. It overrides
+        # both the inherited environment and a CWD .env, so a leaked parent
+        # TELEGRAM_BOT_TOKEN (e.g. a fleet repo's .env) can't hijack the
+        # bot (see #1).
         local_env = Path(".env")
         global_env = self.config_dir / ".env"
         if local_env.is_file():
             load_dotenv(local_env)
             logger.debug("Loaded env from %s", local_env.resolve())
         if global_env.is_file():
-            load_dotenv(global_env)
+            # override=True: ccbot's own .env must win over a leaked parent
+            # TELEGRAM_BOT_TOKEN (e.g. a fleet repo's .env sourced into the
+            # launching shell). Without this, the inherited token silently
+            # overrides ~/.ccbot/.env and ccbot runs as the wrong bot.
+            load_dotenv(global_env, override=True)
             logger.debug("Loaded env from %s", global_env)
 
         self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN") or ""

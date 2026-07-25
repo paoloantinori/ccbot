@@ -41,3 +41,30 @@ class TestConfigIntegration:
         assert cfg.is_user_allowed(456)
         assert cfg.is_user_allowed(789)
         assert not cfg.is_user_allowed(999)
+
+    def test_config_dir_env_overrides_a_leaked_parent_env_token(self, tmp_path, monkeypatch):
+        """Regression (#1): a TELEGRAM_BOT_TOKEN leaked into the environment
+        (e.g. a fleet repo's .env sourced into the launching shell) must NOT
+        win over ~/.ccbot/.env. Before the fix, load_dotenv(override=False)
+        let the inherited token silently override the project .env."""
+        (tmp_path / ".env").write_text("TELEGRAM_BOT_TOKEN=from-dotenv-token\nALLOWED_USERS=99999\n")
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        monkeypatch.chdir(workdir)
+        monkeypatch.setenv("CCBOT_DIR", str(tmp_path))
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "leaked-from-parent-shell")
+        cfg = Config()
+        assert cfg.telegram_bot_token == "from-dotenv-token"
+
+    def test_config_dir_env_overrides_a_cwd_env_file(self, tmp_path, monkeypatch):
+        """Regression (#1): a CWD .env (e.g. ccbot launched from a repo whose
+        .env exports a different token) must NOT win over ~/.ccbot/.env."""
+        (tmp_path / ".env").write_text("TELEGRAM_BOT_TOKEN=from-dotenv-token\nALLOWED_USERS=99999\n")
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        (workdir / ".env").write_text("TELEGRAM_BOT_TOKEN=from-cwd-fleet\n")
+        monkeypatch.chdir(workdir)
+        monkeypatch.setenv("CCBOT_DIR", str(tmp_path))
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        cfg = Config()
+        assert cfg.telegram_bot_token == "from-dotenv-token"
