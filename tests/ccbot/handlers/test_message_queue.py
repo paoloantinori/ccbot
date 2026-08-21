@@ -200,7 +200,9 @@ class TestSecondaryMessageRollingDelete:
             mock_bot.send_message.return_value = next_sent
             await _process_content_task(mock_bot, USER_ID, _task("thinking", True))
 
-        deleted_ids = {c.kwargs["message_id"] for c in mock_bot.delete_message.call_args_list}
+        deleted_ids = {
+            c.kwargs["message_id"] for c in mock_bot.delete_message.call_args_list
+        }
         assert deleted_ids == {201, 202, 203}
         assert _secondary_msg_info[(USER_ID, THREAD_ID)] == ([204], "@1")
 
@@ -227,7 +229,9 @@ class TestSecondaryMessageRollingDelete:
 
             mock_bot.delete_message.side_effect = RetryAfter(5)
             with pytest.raises(RetryAfter):
-                await _process_content_task(mock_bot, USER_ID, _task("tool_result", True))
+                await _process_content_task(
+                    mock_bot, USER_ID, _task("tool_result", True)
+                )
 
         # Still tracked (not silently dropped) so a retry can delete it.
         assert _secondary_msg_info[(USER_ID, THREAD_ID)] == ([100], "@1")
@@ -266,7 +270,9 @@ class TestSecondaryMessageRollingDelete:
 
             await _process_content_task(mock_bot, USER_ID, _task("thinking", True))
 
-            mock_bot.delete_message.side_effect = Exception("message to delete not found")
+            mock_bot.delete_message.side_effect = Exception(
+                "message to delete not found"
+            )
             second_sent = MagicMock()
             second_sent.message_id = 101
             mock_bot.send_message.return_value = second_sent

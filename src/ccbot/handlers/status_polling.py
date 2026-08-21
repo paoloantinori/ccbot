@@ -25,7 +25,11 @@ from telegram.error import BadRequest
 
 from ..config import config
 from ..session import session_manager
-from ..terminal_parser import extract_interactive_content, is_interactive_ui, parse_status_line
+from ..terminal_parser import (
+    extract_interactive_content,
+    is_interactive_ui,
+    parse_status_line,
+)
 from ..tmux_manager import tmux_manager
 from .interactive_ui import (
     clear_interactive_msg,
