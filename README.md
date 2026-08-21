@@ -1,4 +1,9 @@
-# CCBot
+# CCBot (independent fork)
+
+> **Fork notice**: this is an independently maintained fork of [six-ddc/ccbot](https://github.com/six-ddc/ccbot).
+> Upstream has been inactive since July 2026 (last merge June 2026), so this fork carries its own fixes
+> and cherry-picks of unmerged upstream PRs. `main` stays merge-compatible with `upstream/main` in case
+> upstream resumes; divergence is deliberate and documented in the commit history.
 
 [中文文档](README_CN.md)
 [Русская документация](README_RU.md)
