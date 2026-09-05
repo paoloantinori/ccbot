@@ -15,10 +15,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 import libtmux
+
+# The bot may run under launchd/minimal PATH where bare "tmux" is not found
+# (same class as hook.py's fix; see the 2026-09-05 SessionStart crash).
+TMUX_BIN = shutil.which("tmux") or "/opt/homebrew/bin/tmux"
 
 from .config import SENSITIVE_ENV_VARS, config
 
@@ -183,7 +188,7 @@ class TmuxManager:
             # Use async subprocess to call tmux capture-pane -e for ANSI colors
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    "tmux",
+                    TMUX_BIN,
                     "capture-pane",
                     "-e",
                     "-p",

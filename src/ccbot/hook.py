@@ -19,6 +19,12 @@ import os
 import re
 import shutil
 import subprocess
+
+# Hook subprocesses inherit whatever PATH the parent session had; launchd and
+# hook environments lack /opt/homebrew/bin (same class as the autostart fix
+# 56e0d69). A bare "tmux" here crashed the SessionStart hook on 2026-09-05 and
+# silently dropped the window binding, killing Telegram updates for that window.
+TMUX_BIN = shutil.which("tmux") or "/opt/homebrew/bin/tmux"
 import sys
 from pathlib import Path
 
@@ -195,7 +201,7 @@ def hook_main() -> None:
 
     result = subprocess.run(
         [
-            "tmux",
+            TMUX_BIN,
             "display-message",
             "-t",
             pane_id,
