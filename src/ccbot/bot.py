@@ -277,6 +277,69 @@ async def unbind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
+async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Bind this topic to an EXISTING tmux window, by name or @id.
+
+    Recovery path when a Telegram group is recreated: new topics get new ids
+    and the old topic-to-window bindings die with the group. The native flow
+    only binds at window creation, so this is the only way to re-attach an
+    already-running window. Binding enforces one-window-one-topic: any other
+    topic still pointing at the same window is unbound, which also clears
+    dead bindings left behind by a deleted group.
+    """
+    user = update.effective_user
+    if not user or not is_user_allowed(user.id):
+        return
+    if not update.message:
+        return
+
+    thread_id = _get_thread_id(update)
+    if thread_id is None:
+        await safe_reply(update.message, "❌ This command only works in a topic.")
+        return
+
+    if not context.args:
+        await safe_reply(update.message, "❌ Usage: /bind <window-name | @window-id>")
+        return
+    target = context.args[0].lstrip("/")
+
+    chat = update.message.chat
+    if chat.type in ("group", "supergroup"):
+        session_manager.set_group_chat_id(user.id, thread_id, chat.id)
+
+    window = None
+    if target.startswith("@"):
+        window = await tmux_manager.find_window_by_id(target)
+    if window is None:
+        window = await tmux_manager.find_window_by_name(target)
+    if window is None or not window.window_id:
+        names = [w.window_name or w.window_id for w in await tmux_manager.list_windows()]
+        await safe_reply(
+            update.message,
+            f"❌ No window '{target}'. Available: {', '.join(names)}",
+        )
+        return
+
+    displaced = [
+        t
+        for (uid, t, wid) in session_manager.iter_thread_bindings()
+        if uid == user.id and wid == window.window_id and t != thread_id
+    ]
+    for t in displaced:
+        session_manager.unbind_thread(user.id, t)
+    previous = session_manager.get_window_for_thread(user.id, thread_id)
+    if previous and previous != window.window_id:
+        await clear_topic_state(user.id, thread_id, context.bot, context.user_data)
+
+    session_manager.bind_thread(user.id, thread_id, window.window_id)
+    display = window.window_name or window.window_id
+    extra = f" (displaced {len(displaced)} stale binding(s))" if displaced else ""
+    await safe_reply(
+        update.message,
+        f"✅ Topic bound to window '{display}'{extra}.",
+    )
+
+
 async def esc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send Escape key to interrupt Claude."""
     user = update.effective_user
@@ -1884,7 +1947,7 @@ def create_bot() -> Application:
     application = (
         Application.builder()
         .token(config.telegram_bot_token)
-        .rate_limiter(AIORateLimiter(max_retries=5))
+        .rate_limiter(AIORateLimiter(max_retries=config.rate_limiter_retries))
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()
@@ -1895,6 +1958,7 @@ def create_bot() -> Application:
     application.add_handler(CommandHandler("screenshot", screenshot_command))
     application.add_handler(CommandHandler("esc", esc_command))
     application.add_handler(CommandHandler("unbind", unbind_command))
+    application.add_handler(CommandHandler("bind", bind_command))
     application.add_handler(CommandHandler("usage", usage_command))
     application.add_handler(CallbackQueryHandler(callback_handler))
     # Topic closed event — auto-kill associated window
